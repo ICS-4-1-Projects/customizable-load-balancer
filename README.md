@@ -35,5 +35,5 @@
     ```
 6. Access application
     ```bash
-    http://localhost:5000/products
+    http://localhost:5000/
     ```

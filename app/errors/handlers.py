@@ -7,7 +7,7 @@ error_bp = Blueprint('errors', __name__)
 @error_bp.app_errorhandler(404)
 def not_found_error(error):
     # current_app.logger.error(f'404 Not Found: {request.path}, Error: {error}')
-    return render_template('errors/404.html'), 404
+    return '404 Page not found'
 
 @error_bp.app_errorhandler(500)
 def internal_error(error):

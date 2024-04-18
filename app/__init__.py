@@ -34,6 +34,10 @@ def create_app():
     
     # Initialize Flask-Mail
     app.mail = Mail(app)
+    
+    @app.route('/')
+    def index():
+        return "<h1>You did it my G. Successfully spinned up the bad boy containers :) Have a beer or two on your own bill :)</h1>"
 
     
     # Register Blueprints
