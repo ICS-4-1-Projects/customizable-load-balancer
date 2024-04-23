@@ -20,7 +20,8 @@ func NewConsistentHashMap(numSlots, numContainers, numVirtuals int) *ConsistentH
 		numVirtuals:   numVirtuals,
 	}
 	for i := range c.slots {
-		c.slots[i] = -1 // Initialize slots with -1 indicating empty
+		// Initialize slots with -1 indicating empty
+		c.slots[i] = -1
 	}
 	c.setupVirtualServers()
 	return c
@@ -42,11 +43,11 @@ func (c *ConsistentHashMap) setupVirtualServers() {
 }
 
 func (c *ConsistentHashMap) virtualServerHash(serverID, virtualID int) int {
-	return serverID + virtualID + 2*virtualID + 25
+	return int(math.Pow(float64(serverID), 2)) + int(math.Pow(float64(virtualID), 2)) + (2 * virtualID) + 25
 }
 
 func (c *ConsistentHashMap) requestHash(requestID int) int {
-	return (requestID*requestID + 2*requestID + 217) % c.numSlots
+	return ((requestID * requestID) + (2 * requestID) + 17) % c.numSlots
 }
 
 func (c *ConsistentHashMap) mapRequest(requestID int) int {
@@ -63,9 +64,9 @@ func (c *ConsistentHashMap) mapRequest(requestID int) int {
 }
 
 func main() {
-	hashMap := NewConsistentHashMap(512, 3, int(math.Log2(512)))
+	hashMap := NewConsistentHashMap(512, 5, int(math.Log2(512)))
 
-	for requestID := 0; requestID < 10; requestID++ {
+	for requestID := 0; requestID < 100; requestID++ {
 		server := hashMap.mapRequest(requestID)
 		fmt.Printf("Request %d is handled by server container %d\n", requestID, server)
 	}
