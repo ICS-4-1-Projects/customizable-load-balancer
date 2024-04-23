@@ -1,3 +1,0 @@
-Inventory refers to all the items and materials a business holds for the purpose of resale, use in production, or other operational purposes. It includes finished products, work-in-progress goods, raw materials, and sometimes, supplies that are used in production. Inventory is a broader term and encompasses everything that a business might sell or use to produce its goods or services.
-
-Stock, on the other hand, specifically refers to finished goods or goods that are ready for sale. It's a subset of inventory. Stock typically includes items that are on store shelves or in a warehouse waiting to be sold to customers. In financial accounting and inventory management, "stock" might be used to describe the goods available for sale at any given time.
