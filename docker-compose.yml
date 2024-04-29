@@ -1,12 +1,39 @@
 version: '3.8'
 
 services:
+  # Prometheus for scraping metrics from cAdvisor
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - cadvisor
+
+  # cAdvisor for monitoring resource usage
+  cadvisor:
+    image: google/cadvisor:latest
+    container_name: cadvisor
+    ports:
+      - "8080:8080"
+    volumes:
+      - "/:/rootfs:ro"
+      - "/var/run:/var/run:rw"
+      - "/sys:/sys:ro"
+      - "/var/lib/docker/:/var/lib/docker:ro"
+    privileged: true
+    restart: always
+
   server_1:
     image: dslb-server
     ports:
       - "8081:5000"
     environment:
       - SERVER_ID=1
+    depends_on:
+      - cadvisor  # Ensure servers start after cAdvisor is ready, if monitoring is critical.
 
   server_2:
     image: dslb-server
@@ -14,6 +41,8 @@ services:
       - "8082:5000"
     environment:
       - SERVER_ID=2
+    depends_on:
+      - cadvisor
 
   server_3:
     image: dslb-server
@@ -21,3 +50,19 @@ services:
       - "8083:5000"
     environment:
       - SERVER_ID=3
+    depends_on:
+      - cadvisor
+
+  # Grafana for visualizing data from Prometheus
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus  # Ensure Grafana starts after Prometheus
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin  # Default admin user
+      - GF_SECURITY_ADMIN_PASSWORD=pass  # Default admin password
+    restart: always
+
