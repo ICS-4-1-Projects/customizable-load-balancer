@@ -1,9 +1,18 @@
 package main
 
 import (
-	"fmt"
-	"math"
+	"encoding/json"
+	"log"
+	"net/http"
+	"sync"
 )
+
+type LoadBalancer struct {
+	replicas []string
+	mux      sync.Mutex
+}
+
+var lb LoadBalancer
 
 type ConsistentHashMap struct {
 	numSlots      int
@@ -63,10 +72,42 @@ func (c *ConsistentHashMap) mapRequest(requestID int) int {
 }
 
 func main() {
-	hashMap := NewConsistentHashMap(512, 3, int(math.Log2(512)))
+	lb = LoadBalancer{replicas: []string{"Server 1", "Server 2", "Server 3"}}
 
-	for requestID := 0; requestID < 10; requestID++ {
-		server := hashMap.mapRequest(requestID)
-		fmt.Printf("Request %d is handled by server container %d\n", requestID, server)
-	}
+	http.HandleFunc("/rep", handleReplicas)
+	http.HandleFunc("/add", handleAdd)
+	http.HandleFunc("/rm", handleRemove)
+	http.HandleFunc("/", handleRouting)
+
+	log.Fatal(http.ListenAndServe(":5000", nil))
+}
+
+func handleReplicas(w http.ResponseWriter, r *http.Request) {
+	lb.mux.Lock()
+	defer lb.mux.Unlock()
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"message": map[string]interface{}{
+			"N":        len(lb.replicas),
+			"replicas": lb.replicas,
+		},
+		"status": "successful",
+	})
+}
+
+func handleAdd(w http.ResponseWriter, r *http.Request) {
+	lb.mux.Lock()
+	defer lb.mux.Unlock()
+
+}
+
+func handleRemove(w http.ResponseWriter, r *http.Request) {
+	lb.mux.Lock()
+	defer lb.mux.Unlock()
+
+}
+
+func handleRouting(w http.ResponseWriter, r *http.Request) {
+	lb.mux.Lock()
+	defer lb.mux.Unlock()
+
 }
