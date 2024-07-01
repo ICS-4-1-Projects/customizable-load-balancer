@@ -29,7 +29,7 @@ func getServerId() string {
 
 func helloHandler(w http.ResponseWriter, r *http.Request) {
 	serverID := getServerId()
-	response := fmt.Sprintf("Hello from Server %s", serverID)
+	response := fmt.Sprintf("Hello from %s", serverID)
 
 	fmt.Fprint(w, response)
 }
