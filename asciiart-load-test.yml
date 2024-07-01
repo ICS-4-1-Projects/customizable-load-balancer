@@ -1,0 +1,28 @@
+config:
+  target: 'http://localhost'  # Generic target, overridden by custom function
+  phases:
+    - duration: 60
+      arrivalRate: 5
+      rampTo: 10
+      name: Warm up the API
+    - duration: 60
+      arrivalRate: 10
+      rampTo: 50
+      name: Ramp up to peak load
+    - duration: 300
+      arrivalRate: 50
+      name: Sustained peak load
+  processor: "./custom-functions.js"  # Ensure this path is correct
+
+scenarios:
+  - name: "Test all the servers randomly" #created to work for the case without the load balancer
+    flow:
+      - function: "randomizePort"
+      - function: "setUserContextHello"  # Set endpoint for "/hello"
+      - get:
+          url: "/hello"
+          beforeRequest: "setPort"
+      - function: "setUserContextHeartbeat"  # Set endpoint for "/heartbeat"
+      - get:
+          url: "/heartbeat"
+          beforeRequest: "setPort"

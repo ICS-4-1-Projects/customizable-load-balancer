@@ -38,7 +38,8 @@ func NewConsistentHashMap(numSlots, numContainers, numVirtuals int) *ConsistentH
 		numVirtuals:   numVirtuals,
 	}
 	for i := range c.slots {
-		c.slots[i] = -1 // Initialize slots with -1 indicating empty
+		// Initialize slots with -1 indicating empty
+		c.slots[i] = -1
 	}
 	c.setupVirtualServers()
 	return c

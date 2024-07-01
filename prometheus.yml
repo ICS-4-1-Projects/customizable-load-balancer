@@ -1,0 +1,15 @@
+global:
+  scrape_interval: 15s  # By default, scrape targets every 15 seconds.
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']  # Scrape Prometheus itself.
+
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']  # Ensure the port matches cAdvisor's exposed port.
+
+  - job_name: 'custom_servers'
+    static_configs:
+      - targets: ['server_1:5000', 'server_2:5000', 'server_3:5000']
