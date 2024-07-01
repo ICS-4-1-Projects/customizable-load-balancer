@@ -3,16 +3,21 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
 	"os/exec"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
 
 type LoadBalancer struct {
 	replicas []string
+	hashMap  *ConsistentHashMap
 	mux      sync.Mutex
 }
 
@@ -42,7 +47,8 @@ func NewConsistentHashMap(numSlots, numContainers, numVirtuals int) *ConsistentH
 func (c *ConsistentHashMap) setupVirtualServers() {
 	for i := 0; i < c.numContainers; i++ {
 		for j := 0; j < c.numVirtuals; j++ {
-			slot := c.virtualServerHash(i, j) % c.numSlots
+			key := fmt.Sprintf("server-%d-virtual-%d", i, j)
+			slot := c.hash(key) % c.numSlots
 
 			// Linear probing for collision resolution
 			for c.slots[slot] != -1 {
@@ -54,29 +60,47 @@ func (c *ConsistentHashMap) setupVirtualServers() {
 	}
 }
 
-func (c *ConsistentHashMap) virtualServerHash(serverID, virtualID int) int {
-	return serverID + virtualID + 2*virtualID + 25
+func (c *ConsistentHashMap) hash(key string) int {
+	h := fnv.New32a()
+	h.Write([]byte(key))
+	return int(h.Sum32())
 }
 
-func (c *ConsistentHashMap) requestHash(requestID int) int {
-	return (requestID*requestID + 2*requestID + 217) % c.numSlots
-}
-
-func (c *ConsistentHashMap) mapRequest(requestID int) int {
-	slot := c.requestHash(requestID)
+func (c *ConsistentHashMap) mapRequest(key string) int {
+	slot := c.hash(key) % c.numSlots
 	startSlot := slot
 	for c.slots[slot] == -1 {
 		slot = (slot + 1) % c.numSlots
 		if slot == startSlot {
-			// Ensure we do not loop indefinitely
 			panic("No available server found")
 		}
 	}
 	return c.slots[slot]
 }
 
+func (c *ConsistentHashMap) addServer(serverID int, hostname string) {
+	for j := 0; j < c.numVirtuals; j++ {
+		key := fmt.Sprintf("%s-virtual-%d", hostname, j)
+		slot := c.hash(key) % c.numSlots
+
+		// Linear probing for collision resolution
+		for c.slots[slot] != -1 {
+			slot = (slot + 1) % c.numSlots
+		}
+
+		c.slots[slot] = serverID
+	}
+}
+
 func main() {
-	lb = LoadBalancer{replicas: []string{"server_1", "server_2", "server_3"}}
+	lb = LoadBalancer{
+		replicas: []string{"server_1", "server_2", "server_3"},
+		hashMap:  NewConsistentHashMap(100, 3, 3),
+	}
+
+	for i, hostname := range lb.replicas {
+		lb.hashMap.addServer(i, hostname)
+	}
 
 	http.HandleFunc("/rep", handleReplicas)
 	http.HandleFunc("/add", handleAdd)
@@ -124,12 +148,14 @@ func handleAdd(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, hostname := range payload.Hostnames {
-		cmd := exec.Command("docker", "run", "-d", "--name", hostname, "-e", fmt.Sprintf("SERVER_ID=%s", hostname), "dslb-server")
+		port, _ := extractServerPort(hostname)
+		cmd := exec.Command("docker", "run", "-d", "--name", hostname, "-e", fmt.Sprintf("SERVER_ID=%s", hostname), "-p", fmt.Sprintf("%d:5000", port), "dslb-server")
 		if err := cmd.Run(); err != nil {
 			http.Error(w, fmt.Sprintf("Failed to start Docker container: %v", err), http.StatusInternalServerError)
 			return
 		}
 		lb.replicas = append(lb.replicas, hostname)
+		lb.hashMap.addServer(len(lb.replicas)-1, hostname)
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -193,6 +219,11 @@ func handleRemove(w http.ResponseWriter, r *http.Request) {
 		lb.replicas = removeFromSlice(lb.replicas, hostname)
 	}
 
+	lb.hashMap = NewConsistentHashMap(100, len(lb.replicas), 3)
+	for i, hostname := range lb.replicas {
+		lb.hashMap.addServer(i, hostname)
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"message": map[string]interface{}{
@@ -234,4 +265,59 @@ func handleRouting(w http.ResponseWriter, r *http.Request) {
 	lb.mux.Lock()
 	defer lb.mux.Unlock()
 
+	path := r.URL.Path
+
+	if path != "/hello" {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"message": fmt.Sprintf("<Error> '%s' endpoint does not exist in server replicas", path),
+			"status":  "failure",
+		})
+		w.WriteHeader(http.StatusBadRequest)
+		return
+	}
+
+	// Introduce randomness within the range of available servers
+	randomComponent := strconv.Itoa(rand.Intn(len(lb.replicas)))
+	hashKey := fmt.Sprintf("%s:%s:%s", r.RemoteAddr, path, randomComponent)
+	serverIndex := lb.hashMap.mapRequest(hashKey)
+	selectedServer := lb.replicas[serverIndex]
+
+	log.Printf("Routing request for %s with random component %s to server %s (index %d)", path, randomComponent, selectedServer, serverIndex)
+
+	port, _ := extractServerPort(selectedServer)
+	url := fmt.Sprintf("http://localhost:%d%s", port, path)
+
+	resp, err := http.Get(url)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to route to server: %v", err), http.StatusInternalServerError)
+		return
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to read response from server: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	w.WriteHeader(resp.StatusCode)
+	w.Write(body)
+}
+
+func extractServerPort(hostname string) (int, error) {
+	underscoreIndex := strings.LastIndex(hostname, "_")
+	if underscoreIndex == -1 {
+		return 0, fmt.Errorf("no underscore found in hostname string")
+	}
+
+	numberStr := hostname[underscoreIndex+1:]
+
+	number, err := strconv.Atoi(numberStr)
+	if err != nil {
+		return 0, fmt.Errorf("failed to convert substring to integer: %v", err)
+	}
+
+	return 8080 + number, nil
 }
